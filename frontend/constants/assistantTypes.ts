@@ -112,3 +112,32 @@ export const typeIdOrder = [
   LSP1_TYPE_IDS.LSP14OwnershipTransferred_SenderNotification,
   LSP1_TYPE_IDS.LSP14OwnershipTransferred_RecipientNotification,
 ];
+
+export const transactionTypeMap: {
+  [key: string]: {
+    label: string;
+    typeName: string;
+    id: string;
+    icon?: string;
+    iconPath?: string;
+  };
+} = {
+  LSP7Tokens: {
+    label: 'Receiving',
+    typeName: 'LSP7s',
+    id: LSP1_TYPE_IDS.LSP7Tokens_RecipientNotification,
+    icon: '🪙',
+  },
+  LSP8Tokens: {
+    label: 'Receiving',
+    typeName: 'LSP8s',
+    id: LSP1_TYPE_IDS.LSP8Tokens_RecipientNotification,
+    icon: '🖼️',
+  },
+  LYX: {
+    label: 'Receiving',
+    typeName: 'LYX',
+    id: LSP1_TYPE_IDS.LSP0ValueReceived,
+    iconPath: '/lyx_icon_mainnet.svg',
+  },
+};

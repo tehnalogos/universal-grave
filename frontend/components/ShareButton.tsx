@@ -9,12 +9,12 @@ import {
   MenuItem,
 } from '@chakra-ui/react';
 import { FaShare } from 'react-icons/fa';
-import { networkNameToIdMapping, supportedNetworks } from '@/constants/supportedNetworks';
+import { useConnectedAccount } from '@/contexts/ConnectedAccountProvider';
 
-const ShareButton = ({ networkName, pageAccount }: { networkName: string; pageAccount: string | null; }) => {
-  const network = supportedNetworks[networkNameToIdMapping[networkName]];
+const ShareButton = ({  pageAccount }: {pageAccount: string | null; }) => {
+  const { appNetworkConfig } = useConnectedAccount();
 
-  const currentUrl = `${network.baseUrl}/${networkName}/grave/${pageAccount}`;
+  const currentUrl = `${appNetworkConfig.baseUrl}/${appNetworkConfig.chainSlug}/grave/${pageAccount}`;
   const { hasCopied, onCopy } = useClipboard(currentUrl);
   const toast = useToast();
 

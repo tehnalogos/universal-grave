@@ -8,10 +8,10 @@ export const metadata: Metadata = {
   description: 'List of assets in your graveyard',
 };
 
-export default function Grave({ params }: { params: { networkName: string; account: string; } }) {
+export default function Grave({ params }: { params: { account: string; } }) {
   return (
     <Container maxW={'6xl'} width={'100%'} py={5}>
-      <GraveClient networkName={params.networkName} graveOwner={params.account} />
+      <GraveClient graveOwner={params.account} />
     </Container>
   );
 }

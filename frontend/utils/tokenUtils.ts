@@ -17,6 +17,7 @@ export type TokenData = {
   readonly decimals?: string;
   readonly balance?: string | bigint;
   readonly tokenId?: string;
+  readonly tokenIds?: string[];
   metadata?: Record<string, any>;
   image?: string;
 };
@@ -281,6 +282,7 @@ export async function processLSP8Asset(
   for (const tokenId of tokenIds) {
     if (asset.tokenType === LSP4_TOKEN_TYPES.COLLECTION) {
       try {
+        // getDataBatchForTokenIds
         const tokenMetadata = await contract.getDataForTokenId(
           tokenId,
           ERC725.encodeKeyName('LSP4Metadata')

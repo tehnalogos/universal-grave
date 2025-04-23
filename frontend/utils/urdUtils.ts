@@ -220,21 +220,7 @@ export const getMissingPermissions = (
   return missingPermissions;
 };
 
-export const doesControllerHaveMissingPermissions = async (
-  address: string,
-  targetEntity: string
-) => {
-  // check if we need to update permissions
-  const currentPermissions = await getAddressPermissionsOnTarget(
-    address,
-    targetEntity
-  );
-  const missingPermissions = getMissingPermissions(currentPermissions, {
-    ...DEFAULT_UP_CONTROLLER_PERMISSIONS,
-    ...UAP_CONTROLLER_PERMISSIONS,
-  });
-  return missingPermissions;
-};
+
 
 export const urdsMatchLatestForwarder = (
   URDLsp7: string | null,

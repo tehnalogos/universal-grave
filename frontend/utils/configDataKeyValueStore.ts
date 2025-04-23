@@ -1,10 +1,15 @@
 // Function to encode an array of addresses
-import { AbiCoder, getAddress, keccak256, toUtf8Bytes } from 'ethers';
-import { ERC725 } from '@/types/ERC725';
-/*
+import { AbiCoder, BrowserProvider, getAddress, keccak256, toUtf8Bytes } from 'ethers';
+import { ERC725 as ERC725Type } from '@/types/ERC725';
 import { ERC725YDataKeys, LSP1_TYPE_IDS } from '@lukso/lsp-smart-contracts';
+import { ERC725__factory } from '@/types';
 import LSP6Schema from '@erc725/erc725.js/schemas/LSP6KeyManager.json';
 import ERC725, { ERC725JSONSchema } from '@erc725/erc725.js';
+import { getChecksumAddress } from './tokenUtils';
+import { DEFAULT_UP_URD_PERMISSIONS } from '@/app/constants';
+import { transactionTypeMap } from '@/constants/assistantTypes';
+/*
+import { ERC725YDataKeys, LSP1_TYPE_IDS } from '@lukso/lsp-smart-contracts';
 import { getChecksumAddress } from './fieldValidations';
 import {
   DEFAULT_UP_CONTROLLER_PERMISSIONS,
@@ -66,7 +71,7 @@ export function generateListSetKey(executiveAddress: string, screenerAddress: st
 }
 
 // Reads the current list set from the Universal Profile
-export async function getListSet(up: ERC725, executiveAddress: string, screenerAddress: string): Promise<string[]> {
+export async function getListSet(up: ERC725Type, executiveAddress: string, screenerAddress: string): Promise<string[]> {
   const setKey = generateListSetKey(executiveAddress, screenerAddress);
   const value = await up.getData(setKey);
   if (value === "0x" || value.length === 0) return [];
@@ -74,7 +79,7 @@ export async function getListSet(up: ERC725, executiveAddress: string, screenerA
 }
 
 // Adds an address to the list set if not already present
-export async function addToListSetPayload(up: ERC725, executiveAddress: string, screenerAddress: string, itemAddress: string) {
+export async function addToListSetPayload(up: ERC725Type, executiveAddress: string, screenerAddress: string, itemAddress: string) {
   const currentSet = await getListSet(up, executiveAddress, screenerAddress);
   if (currentSet.includes(itemAddress)) return AbiCoder.defaultAbiCoder().encode(["address[]"], [currentSet]);
   const newSet = [...currentSet, itemAddress];
@@ -83,7 +88,7 @@ export async function addToListSetPayload(up: ERC725, executiveAddress: string, 
 }
 
 // Removes an address from the list set if present
-export async function removeFromListSetPayload(up: ERC725, executiveAddress: string, screenerAddress: string, itemAddress: string) {
+export async function removeFromListSetPayload(up: ERC725Type, executiveAddress: string, screenerAddress: string, itemAddress: string) {
   const currentSet = await getListSet(up, executiveAddress, screenerAddress);
   const index = currentSet.indexOf(itemAddress);
   if (index === -1) return AbiCoder.defaultAbiCoder().encode(["address[]"], [currentSet]);
@@ -93,7 +98,7 @@ export async function removeFromListSetPayload(up: ERC725, executiveAddress: str
 }
 
 // Sets or removes an address in the list (combines mapping and set operations)
-export async function setListEntry(up: ERC725, executiveAddress: string, screenerAddress: string, itemAddress: string, isInList: boolean) {
+export async function setListEntry(up: ERC725Type, executiveAddress: string, screenerAddress: string, itemAddress: string, isInList: boolean) {
   const mappingKey = generateListMappingKey(executiveAddress, screenerAddress, itemAddress);
   const setKey = generateListSetKey(executiveAddress, screenerAddress);
   const value = isInList ? AbiCoder.defaultAbiCoder().encode(["bool"], [true]) : "0x";
@@ -125,4 +130,149 @@ export function customDecodeAddresses(encoded: string): string[] {
 
   return addresses;
 }
+
+export const subscribeToUapURD = async (
+  provider: BrowserProvider,
+  upAccount: string,
+  uapURD: string
+) => {
+  const signer = await provider.getSigner();
+  const URDdataKey = ERC725YDataKeys.LSP1.LSP1UniversalReceiverDelegate;
+  const LSP7URDdataKey =
+    ERC725YDataKeys.LSP1.LSP1UniversalReceiverDelegatePrefix +
+    LSP1_TYPE_IDS.LSP7Tokens_RecipientNotification.slice(2, 42);
+  const LSP8URDdataKey =
+    ERC725YDataKeys.LSP1.LSP1UniversalReceiverDelegatePrefix +
+    LSP1_TYPE_IDS.LSP8Tokens_RecipientNotification.slice(2, 42);
+
+  const delegateKeys = [URDdataKey, LSP7URDdataKey, LSP8URDdataKey];
+  const delegateValues = [uapURD, '0x', '0x'];
+
+  const UP = ERC725__factory.connect(upAccount, provider);
+  const upPermissions = new ERC725(
+    LSP6Schema as ERC725JSONSchema[],
+    upAccount,
+    window.lukso
+  );
+  const checksumUapURD = getChecksumAddress(uapURD) as string;
+
+  // Retrieve current controllers from the UP's permissions.
+  const currentPermissionsData = await upPermissions.getData();
+  const currentControllers = currentPermissionsData[0].value as string[];
+
+  // Remove any existing instances of the UAP-URD to avoid duplicates.
+  let updatedControllers = currentControllers.filter((controller: string) => {
+    return getChecksumAddress(controller) !== checksumUapURD;
+  });
+
+  // Add the UAP-URD to the controllers.
+  updatedControllers.push(checksumUapURD);
+
+  // 4. Prepare permissions for the UAP-URD.
+  const uapURDPermissions = upPermissions.encodePermissions({
+    SUPER_CALL: true,
+    SUPER_TRANSFERVALUE: true,
+    ...DEFAULT_UP_URD_PERMISSIONS,
+  });
+
+  // Encode the new permissions and updated controllers data.
+  const permissionsData = upPermissions.encodeData([
+    {
+      keyName: 'AddressPermissions:Permissions:<address>',
+      dynamicKeyParts: checksumUapURD,
+      value: uapURDPermissions,
+    },
+    {
+      keyName: 'AddressPermissions[]',
+      value: updatedControllers,
+    },
+  ]);
+
+  // 5. Batch update all the data on the UP.
+  const allKeys = [...delegateKeys, ...permissionsData.keys];
+  const allValues = [...delegateValues, ...permissionsData.values];
+
+  const tx = await UP.connect(signer).setDataBatch(allKeys, allValues);
+  return tx.wait();
+};
+
+export const unsubscribeFromUapURD = async (
+  provider: BrowserProvider,
+  upAccount: string,
+  uapURD: string,
+  defaultURDUP: string
+) => {
+  const signer = await provider.getSigner();
+  const upContract = ERC725__factory.connect(upAccount, signer);
+
+  const allTypeIds = Object.values(transactionTypeMap).map(obj => obj.id);
+  const typeConfigKeys = allTypeIds.map(id =>
+    generateMappingKey('UAPTypeConfig', id)
+  );
+  const typeConfigValues = await upContract.getDataBatch(typeConfigKeys);
+  const allDiscoveredAssistants = new Set<string>();
+  typeConfigValues.forEach(encodedVal => {
+    if (encodedVal && encodedVal !== '0x') {
+      const addresses = customDecodeAddresses(encodedVal);
+      addresses.forEach(addr =>
+        allDiscoveredAssistants.add(addr.toLowerCase())
+      );
+    }
+  });
+
+  const removeTypeKeys = typeConfigKeys;
+  const removeTypeValues = typeConfigValues.map(() => '0x');
+
+  const removeAssistantKeys: string[] = [];
+  const removeAssistantValues: string[] = [];
+  allDiscoveredAssistants.forEach(assistantLower => {
+    const assistantKey = generateMappingKey(
+      'UAPExecutiveConfig',
+      assistantLower
+    );
+    removeAssistantKeys.push(assistantKey);
+    removeAssistantValues.push('0x');
+  });
+
+  const upPermissions = new ERC725(LSP6Schema, upAccount, window.lukso);
+  const URDdataKey = ERC725YDataKeys.LSP1.LSP1UniversalReceiverDelegate;
+  const delegateKeys = [URDdataKey];
+  const delegateValues = [defaultURDUP];
+
+  // Ensure we remove the UAP URD from the controllers array
+  const checksumUapURD = getChecksumAddress(uapURD) as string;
+  const currentPermissionsData = await upPermissions.getData();
+  const currentControllers = currentPermissionsData[0].value as string[];
+  const updatedControllers = currentControllers.filter(
+    (controller: string) => getChecksumAddress(controller) !== checksumUapURD
+  );
+  const uapURDPermissions = '0x';
+  const permissionsData = upPermissions.encodeData([
+    {
+      keyName: 'AddressPermissions:Permissions:<address>',
+      dynamicKeyParts: checksumUapURD,
+      value: uapURDPermissions,
+    },
+    {
+      keyName: 'AddressPermissions[]',
+      value: updatedControllers,
+    },
+  ]);
+
+  const allKeys = [
+    ...removeTypeKeys,
+    ...removeAssistantKeys,
+    ...delegateKeys,
+    ...permissionsData.keys,
+  ];
+  const allValues = [
+    ...removeTypeValues,
+    ...removeAssistantValues,
+    ...delegateValues,
+    ...permissionsData.values,
+  ];
+
+  const tx = await upContract.setDataBatch(allKeys, allValues);
+  return tx.wait();
+};
 

@@ -9,10 +9,11 @@ import React, {
   useRef,
 } from 'react';
 import { SiweMessage } from 'siwe';
-import { BrowserProvider, JsonRpcProvider, verifyMessage } from 'ethers';
+import ethers, { AbiCoder, BrowserProvider, JsonRpcProvider, verifyMessage, keccak256, toUtf8Bytes } from 'ethers';
 import { getImageFromIPFS } from '@/utils/ipfs';
 import { NetworkConfig, supportedNetworks } from '@/constants/supportedNetworks';
 import lsp3ProfileSchema from '@erc725/erc725.js/schemas/LSP3ProfileMetadata.json';
+import uap from '@/schemas/UAP.json';
 import { ERC725, ERC725JSONSchema } from '@erc725/erc725.js';
 import { getGraveVault } from '@/utils/universalProfile';
 import { usePathname } from 'next/navigation';
@@ -20,9 +21,10 @@ import { getProvider } from '@/utils/provider';
 import { getNetwork } from '@/utils/utils';
 import { ERC725 as ERC725ContractType, ERC725__factory } from '@/types';
 import { ERC725YDataKeys, LSP1_TYPE_IDS } from '@lukso/lsp-smart-contracts';
-import { customDecodeAddresses, generateExecutiveScreenersKey, generateMappingKey, generateScreenerConfigKey } from '@/utils/configDataKeyValueStore';
+import { customDecodeAddresses, generateExecutiveScreenersKey, generateListSetKey, generateMappingKey, generateScreenerConfigKey } from '@/utils/configDataKeyValueStore';
 import { getMissingPermissions, isUAPURDSet } from '@/utils/urdUtils';
 import { DEFAULT_UP_CONTROLLER_PERMISSIONS, UAP_CONTROLLER_PERMISSIONS } from '@/app/constants';
+import { GRAVE_ASSET_TYPES } from '@/utils/tokenUtils';
 
 interface Profile {
   name: string;
@@ -49,7 +51,7 @@ interface Image {
 
 interface IUAPConfig {
   hasCorrectPermissions: boolean;
-  isUAPSetup: boolean;
+  isUAPInstalled: boolean;
   graveVaultAddress: string;
   uapLsp7TypeConfig: string[];
   uapLsp8TypeConfig: string[];
@@ -78,13 +80,35 @@ interface ProfileContextType {
   disconnect: () => void;
   switchNetwork: (chainId: number) => Promise<void>;
   addGraveVault: (graveVault: string) => void;
+  refreshProfileData: () => Promise<boolean>;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
 
+interface IAssetData {
+  readonly interface: GRAVE_ASSET_TYPES;
+  readonly address: string;
+  readonly tokenType?: number;
+  readonly name?: string;
+  readonly symbol?: string;
+  readonly decimals?: string;
+  readonly balance?: string | bigint;
+  readonly tokenIds?: string[];
+  readonly tokensMetadata?: any[];
+  metadata?: Record<string, any>;
+  image?: string;
+}
+
+/*
+interface IAssetsData {
+  readonly addresses: string[];
+  readonly metadata: {
+  }
+}
+*/
+
 export function ConnectedAccountProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
-  const [chainId, setChainId] = useState<number | null>(null);
   const [universalProfileDetails, setUniversalProfileDetails] = useState<IUniversalProfile | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [URDLsp7, setURDLsp7] = useState<string | null>(null);
@@ -157,7 +181,6 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
         'universalProfileDetails',
         JSON.stringify(universalProfile)
       );
-      setChainId(currentChainId);
       setIsConnected(true);
       setUniversalProfileDetails(universalProfile as IUniversalProfile);
       setError(null);
@@ -173,14 +196,62 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
     }
   };
 
+  const refreshProfileData = async () => {
+    if (connectingRef.current) {
+      return false;
+    }
+    try {
+      connectingRef.current = true;
+      if (!window.lukso) {
+        throw new Error(
+          'No wallet provider detected. Please install the UP Browser Extension.'
+        );
+      }
+      if (!universalProfileDetails?.mainUPController) {
+        throw new Error('No mainUPController detected');
+      }
+      const currentChainId =universalProfileDetails?.chainId!;
+
+      const universalProfile = await fetchProfileData(
+        universalProfileDetails?.address,
+        currentChainId,
+        true,
+        universalProfileDetails?.mainUPController
+      );
+      localStorage.setItem(
+        'universalProfileDetails',
+        JSON.stringify(universalProfile)
+      );
+      localStorage.setItem('universalProfileTimestamp', Date.now().toString());
+      setUniversalProfileDetails(universalProfile as IUniversalProfile);
+      setError(null);
+      connectingRef.current = false;
+      return true;
+    } catch (error: any) {
+      setUniversalProfileDetails(null);
+      setError(error.message);
+      providerRef.current = null;
+      connectingRef.current = false;
+      throw error;
+    }
+  };
+
+
   const disconnect = () => {
     setUniversalProfileDetails(null);
     setIsConnected(false);
-    setChainId(null);
     setError(null);
     localStorage.removeItem('universalProfileDetails');
     providerRef.current = null;
   };
+
+  /*
+  const fetchReceivedAssetsData = async (
+
+  ): Promise<IReceivedAssetsData> => {
+
+  }
+  */
 
   const fetchProfileData = async (
     address: string,
@@ -188,6 +259,7 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
     forceFetch: boolean = false,
     mainUPController?: string,
   ): Promise<IUniversalProfile>  => {
+    const abiCoder = new AbiCoder();
     const walletToFetch = address || universalProfileDetails?.address;
     if (
       !walletToFetch ||
@@ -205,6 +277,20 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
     }
     try {
       setError(null);
+
+      const erc725UAP = new ERC725(uap as ERC725JSONSchema[],
+        "0x0eD19726D947abf512A7b87B1050a5E3d43adD0E",
+        currentNetwork.rpcUrl,
+        { ipfsGateway: currentNetwork.ipfsGateway }
+      );
+      const [UAPTypeConfig] = await erc725UAP.fetchData([{
+        keyName: "UAPTypeConfig:<bytes32>",
+        dynamicKeyParts: [LSP1_TYPE_IDS.LSP7Tokens_RecipientNotification]
+    }]);
+    console.log("FETCHED UAPTypeConfig:<bytes32>", UAPTypeConfig)
+      const test = erc725UAP.encodeKeyName("UAPTypeConfig:<bytes32>", [LSP1_TYPE_IDS.LSP7Tokens_RecipientNotification])
+      console.log("UAPTypeConfig:<bytes32>", test)
+      console.log("previous version", generateMappingKey('UAPTypeConfig', LSP1_TYPE_IDS.LSP7Tokens_RecipientNotification));
       const erc725js = new ERC725(
         lsp3ProfileSchema as ERC725JSONSchema[],
         walletToFetch,
@@ -228,10 +314,37 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
         generateScreenerConfigKey(LSP1_TYPE_IDS.LSP8Tokens_RecipientNotification, networkConfig.graveAssistant.address, networkConfig.screenerAddressAllowlist),
         generateScreenerConfigKey(LSP1_TYPE_IDS.LSP7Tokens_RecipientNotification, networkConfig.graveAssistant.address, networkConfig.screenerAddressCuratedList),
         generateScreenerConfigKey(LSP1_TYPE_IDS.LSP8Tokens_RecipientNotification, networkConfig.graveAssistant.address, networkConfig.screenerAddressCuratedList),
+        generateListSetKey(networkConfig.graveAssistant.address, networkConfig.screenerAddressAllowlist),
+        generateListSetKey(networkConfig.graveAssistant.address, networkConfig.screenerAddressCuratedList),
         ...(mainUPController ? [ERC725YDataKeys.LSP6['AddressPermissions:Permissions'] + mainUPController?.slice(2)] : []),
       ];
       console.log('ConnectedAccountProvider: Fetching protocol config values', keys);
-      const assistantsProtocolConfigValues = await universalProfileContract.getDataBatch(keys);
+      // todo: give names to the values in assistantsProtocolConfigValues
+      const [
+        currentMainURD,
+        currentURDLsp7,
+        currentURDLsp8,
+        rawLsp7TypeConfig,
+        rawLsp8TypeConfig,
+        rawGraveExecutiveConfig, // aka asset forwarder
+        rawLsp7AllowlistScreenerConfig,
+        rawLsp8AllowlistScreenerConfig,
+        rawLsp7CuratedListScreenerConfig,
+        rawLsp8CuratedListScreenerConfig,
+        rawAllowlist,
+        rawCuratedListBlocklist,
+        rawMainUPControllerPermissions,
+      ] = await universalProfileContract.getDataBatch(keys);
+      const uapLsp7TypeConfig = customDecodeAddresses(rawLsp7TypeConfig);
+      const uapLsp8TypeConfig = customDecodeAddresses(rawLsp8TypeConfig);
+      let graveAddress = "";
+      if (rawGraveExecutiveConfig !== '0x') {
+        const types = networkConfig.graveAssistant.configParams.map(param => param.type);
+        const decoded = abiCoder.decode(types, rawGraveExecutiveConfig);
+        graveAddress = decoded[0].toString();
+      } else {
+        graveAddress = "";
+      }
 
       let profile: Profile | null = null;
       let newIssuedAssets: string[] = [];
@@ -282,6 +395,8 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
         newIssuedAssets = lsp12IssuedAssets.value as string[];
       }
 
+      // todo: decode graveVault, curatedList address (and blocklist contents), allowlist
+
       return {
         chainId: chainIdNum,
         address: walletToFetch,
@@ -289,15 +404,15 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
         profile,
         issuedAssets: newIssuedAssets,
         protocolConfig: {
-          hasCorrectPermissions: mainUPController ? getMissingPermissions(erc725js.decodePermissions(assistantsProtocolConfigValues[keys.length - 1]), {
+          hasCorrectPermissions: mainUPController ? getMissingPermissions(erc725js.decodePermissions(rawMainUPControllerPermissions), {
             ...DEFAULT_UP_CONTROLLER_PERMISSIONS,
             ...UAP_CONTROLLER_PERMISSIONS,
           }).length === 0 : false,
-          isUAPSetup: isUAPURDSet(networkConfig.assistantsProtocolAddress, assistantsProtocolConfigValues[1], assistantsProtocolConfigValues[2], assistantsProtocolConfigValues[3]),
+          isUAPInstalled: isUAPURDSet(networkConfig.assistantsProtocolAddress, currentMainURD, currentURDLsp7, currentURDLsp8,),
           graveVaultAddress: "", // to do extract from screener config
-          uapLsp7TypeConfig: customDecodeAddresses(assistantsProtocolConfigValues[3]),
-          uapLsp8TypeConfig: customDecodeAddresses(assistantsProtocolConfigValues[4]),
-          uapExecutiveConfig: assistantsProtocolConfigValues[5],
+          uapLsp7TypeConfig,
+          uapLsp8TypeConfig,
+          uapExecutiveConfig: "",
           executiveScreenersLsp7: [""], //assistantsProtocolConfigValues[6],
           executiveScreenersLsp8: [""] //assistantsProtocolConfigValues[7],
         },
@@ -318,7 +433,6 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
       await provider.send('wallet_switchEthereumChain', [
         { chainId: `0x${newChainId.toString(16)}` },
       ]);
-      setChainId(newChainId);
       console.log('ConnectedAccountProvider: Switched network', { newChainId });
       await connectAndSign(); // Re-fetch profile data after switching
     } catch (error: any) {
@@ -341,7 +455,6 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
             blockExplorerUrls: [supportedNetworks[newChainId].explorer],
           },
         ]);
-        setChainId(newChainId);
         await connectAndSign();
       } else {
         setError(error.message);
@@ -356,6 +469,9 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
       if (storedUniversalProfile && !isConnected) {
         const parsedUniversalProfile: IUniversalProfile =
           JSON.parse(storedUniversalProfile);
+        const storedTimestamp = localStorage.getItem('universalProfileTimestamp');
+        const currentTime = Date.now();
+        const fiveMinutesInMs = 5 * 60 * 1000;
         try {
           const provider = new BrowserProvider(window.lukso);
           providerRef.current = provider;
@@ -364,25 +480,43 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
             accounts.length > 0 &&
             accounts.includes(parsedUniversalProfile.address)
           ) {
-            setUniversalProfileDetails(parsedUniversalProfile);
-            setIsConnected(true);
-            const currentChainId = Number(
-              await provider.send('eth_chainId', [])
-            );
-            setChainId(currentChainId);
-            console.log('ConnectedAccountProvider: Restored session', {
-              ...parsedUniversalProfile,
-              chainId: currentChainId,
-            });
+            if (
+              !storedTimestamp ||
+              (currentTime - parseInt(storedTimestamp)) > fiveMinutesInMs
+            ) {
+              const freshProfile = await fetchProfileData(
+                parsedUniversalProfile.address,
+                parsedUniversalProfile.profileNetworkConfig.chainId,
+                true,
+                parsedUniversalProfile.mainUPController
+              );
+              localStorage.setItem('universalProfileDetails', JSON.stringify(freshProfile));
+              localStorage.setItem('universalProfileTimestamp', currentTime.toString());
+              setUniversalProfileDetails(freshProfile);
+              setIsConnected(true);
+              console.log(
+                'ConnectedAccountProvider: Refetched fresh session data',
+                freshProfile,
+              );
+            } else {
+              setUniversalProfileDetails(parsedUniversalProfile);
+              setIsConnected(true);
+              console.log(
+                'ConnectedAccountProvider: Restored session',
+                parsedUniversalProfile
+              );
+            }
           } else {
             console.log(
               'ConnectedAccountProvider: Session not restored, no active account'
             );
             localStorage.removeItem('universalProfileDetails');
+            localStorage.removeItem('universalProfileTimestamp');
           }
         } catch (error) {
           console.error('ConnectedAccountProvider: Session restore error', error);
           localStorage.removeItem('universalProfileDetails');
+          localStorage.removeItem('universalProfileTimestamp');
           providerRef.current = null;
         }
       }
@@ -408,7 +542,6 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
 
     const handleChainChanged = (chainIdHex: string) => {
       const newChainId = Number(chainIdHex);
-      setChainId(newChainId);
       console.log('ConnectedAccountProvider: Chain changed', { newChainId });
       connectAndSign();
     };
@@ -471,10 +604,16 @@ export function ConnectedAccountProvider({ children }: { children: React.ReactNo
       switchNetwork,
       setURDLsp7,
       setURDLsp8,
-      addGraveVault
+      addGraveVault,
+      refreshProfileData
     }),
-    [universalProfileDetails, error, isConnected, chainId]
+    [universalProfileDetails, error, isConnected, currentNetwork]
   );
+
+  if (typeof window !== 'undefined') {
+    window.keccak256 = keccak256;
+    window.toUtf8Bytes = toUtf8Bytes;
+  }
 
   return (
     <ProfileContext.Provider value={contextValue}>

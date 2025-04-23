@@ -7,6 +7,7 @@ import ShareButton from '@/components/ShareButton';
 import { formatAddress } from '@/utils/tokenUtils';
 import Link from 'next/link';
 import { useConnectedAccount } from '@/contexts/ConnectedAccountProvider';
+import GraveAssistantConfigure from './GraveAssistantConfigure';
 
 /** 
  * A: if user is signed in and this is not their page or if user is not signed in 
@@ -20,21 +21,16 @@ import { useConnectedAccount } from '@/contexts/ConnectedAccountProvider';
  *         if NOT display setup component
  *    2) check if account has a grave vault and display contents if yes (special view of content panels in edit mode)
 **/
-export default function GraveClient({ networkName, graveOwner }: { networkName: string; graveOwner: string }) {
+export default function GraveClient({ graveOwner }: { graveOwner: string }) {
   // const [steps, setSteps] = React.useState([...initialSteps]);
   /// useState<TokenData[]>([]);
+  const { appNetworkConfig, universalProfile, isConnected } = useConnectedAccount();
   const [isOwnerConnected, setIsOwnerConnected] = useState(false);
   const [graveVault, setGraveVault] = useState<string | null>(null);
-  const { universalProfile, graveVault: connectedGraveVault } = useConnectedAccount();
-  /* todo: in useConnectedAccount() fetch
-    1) if extension has correct permissions
-    2) if user has UAP set up
-    3) if user has a grave vault
-  */
   useEffect(() => {
     if (universalProfile?.address.toLowerCase() === graveOwner.toLowerCase()) {
       setIsOwnerConnected(true);
-      setGraveVault(connectedGraveVault ? connectedGraveVault : null);
+      setGraveVault(universalProfile.protocolConfig?.graveVaultAddress ? universalProfile.protocolConfig?.graveVaultAddress : null);
     } else {
       setIsOwnerConnected(false);
       // fetch grave vault for this account
@@ -47,8 +43,11 @@ export default function GraveClient({ networkName, graveOwner }: { networkName: 
   } else {
     graveTitle = `${formatAddress(graveOwner)}'s GRAVEYARD`;
   }
+
+  const configComponent = isConnected && isOwnerConnected ? <GraveAssistantConfigure /> : null;
   return (
     <Box>
+      {configComponent}
       <Flex alignItems={'center'} gap={2}>
         <Text
           fontSize="20px"
@@ -60,13 +59,13 @@ export default function GraveClient({ networkName, graveOwner }: { networkName: 
           {graveTitle}
         </Text>
         {universalProfile?.address === graveOwner && (
-          <Link href={`/${networkName}/grave/configuration`} passHref>
+          <Link href={`/${appNetworkConfig.chainSlug}/grave/configuration`} passHref>
             <Icon as={FaCog} color={'light.white'} h={5} w={6} />
           </Link>
         )}
-        <ShareButton networkName={networkName} pageAccount={graveOwner} />
+        <ShareButton pageAccount={graveOwner} />
       </Flex>
-      <GravePageAssets networkName={networkName} graveOwner={graveOwner} />
+      {/*<GravePageAssets graveOwner={graveOwner} />*/}
     </Box>
   );
 }
