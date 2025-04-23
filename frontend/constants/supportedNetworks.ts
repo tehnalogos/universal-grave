@@ -1,0 +1,76 @@
+import { ExecutiveAssistant } from '@/constants/CustomTypes';
+import {
+  forwarderAssistantMainnet,
+  forwarderAssistantTestnet,
+} from '@/constants/assistantsConfig';
+
+export enum ChainSlugs {
+  LUKSO = 'lukso',
+  LUKSO_TESTNET = 'lukso-testnet',
+}
+
+export const networkNameToIdMapping: { [key: string]: number } = {
+  [ChainSlugs.LUKSO]: 42,
+  [ChainSlugs.LUKSO_TESTNET]: 4201,
+};
+
+export interface NetworkConfig {
+  name: string;
+  displayName: string;
+  chainSlug: string;
+  chainId: number;
+  baseUrl: string;
+  rpcUrl: string;
+  ipfsGateway: string;
+  explorer: string;
+  marketplaceCollectionsURL: string;
+  token: string;
+  assistantsProtocolAddress: string;
+  defaultUniversalReceiverDelegateUP: string;
+  icon: string;
+  universalEverything: string;
+  graveAssistant: ExecutiveAssistant;
+  screenerAddressAllowlist: string;
+  screenerAddressCuratedList: string;
+}
+
+export const supportedNetworks: { [key: string]: NetworkConfig } = {
+  '42': {
+    chainId: 42,
+    name: 'LUKSO',
+    token: 'LYX',
+    displayName: 'Lukso Mainnet',
+    chainSlug: 'lukso',
+    icon: '/lyx_icon_mainnet.svg',
+    baseUrl: 'https://universalgrave.com',
+    rpcUrl: 'https://42.rpc.thirdweb.com',
+    ipfsGateway: 'https://api.universalprofile.cloud/ipfs',
+    explorer: 'https://explorer.execution.mainnet.lukso.network',
+    universalEverything: 'https://universaleverything.io',
+    marketplaceCollectionsURL: 'https://universal.page/collections',
+    assistantsProtocolAddress: '0x94de6507142a5f820b7fa8c01e9cde9c88ca8491',
+    defaultUniversalReceiverDelegateUP: '0x7870C5B8BC9572A8001C3f96f7ff59961B23500D',
+    graveAssistant: forwarderAssistantMainnet,
+    screenerAddressAllowlist: "0x8360a679b0795f8822cf0b0ed47e4fb594f3d250",
+    screenerAddressCuratedList: "0xcc40d669deb3fee161850758d67d7721996432be"
+  },
+  '4201': {
+    chainId: 4201,
+    name: 'LUKSO Testnet',
+    token: 'LYXt',
+    displayName: 'Lukso Testnet',
+    chainSlug: 'lukso-testnet',
+    icon: '/lyx_icon_testnet.svg',
+    baseUrl: 'https://universalgrave.com',
+    rpcUrl: 'https://4201.rpc.thirdweb.com',
+    ipfsGateway: 'https://api.universalprofile.cloud/ipfs',
+    explorer: 'https://explorer.execution.testnet.lukso.network/',
+    universalEverything: 'https://universaleverything.io',
+    marketplaceCollectionsURL: 'https://universalpage.dev/collections',
+    assistantsProtocolAddress: '0xb59419c3d408304d026194c2034c028bc6be3726',
+    defaultUniversalReceiverDelegateUP: '0x7870C5B8BC9572A8001C3f96f7ff59961B23500D',
+    graveAssistant: forwarderAssistantTestnet,
+    screenerAddressAllowlist: "0x6fb630db2f3fe6c69027612bc973e4923bf69820",
+    screenerAddressCuratedList: "0xea260d25c901e15bc045a83b90c590ca1c7ad033"
+  },
+};

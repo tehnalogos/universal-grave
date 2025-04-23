@@ -5,7 +5,6 @@ import {
   IconButton,
   Image,
   Text,
-  useColorModeValue,
   useToast,
 } from '@chakra-ui/react';
 import { FaExternalLinkAlt } from 'react-icons/fa';
@@ -17,7 +16,8 @@ import {
   getEnoughDecimals,
   TokenData,
 } from '@/utils/tokenUtils';
-import { WalletContext } from '@/components/wallet/WalletContext';
+
+
 import { LSP4_TOKEN_TYPES } from '@lukso/lsp-smart-contracts';
 import { LSP1GraveForwarder__factory } from '@/contracts';
 import { AssetIcon } from './AssetIcon';
@@ -53,7 +53,6 @@ const LSP7Panel: React.FC<LSP7PanelProps> = ({
   // Assuming rawTokenAmount is a BigNumber representing the amount in base units
   const rawTokenAmount = tokenData?.balance;
 
-  const walletContext = useContext(WalletContext);
   const {
     account: connectedUPAddress,
     networkConfig,
@@ -61,23 +60,14 @@ const LSP7Panel: React.FC<LSP7PanelProps> = ({
     disconnectIfNetworkChanged,
   } = walletContext;
   const [inProcessingText, setInProcessingText] = useState<string>();
-  const containerBorderColor = useColorModeValue(
-    'var(--chakra-colors-light-black)',
-    'var(--chakra-colors-dark-purple-500)'
-  );
-  const panelBgColor = useColorModeValue('light.white', 'dark.purple.200');
+  const containerBorderColor = 'var(--chakra-colors-dark-purple-500)';
+  const panelBgColor = 'dark.purple.200';
 
-  const createButtonBg = useColorModeValue('light.green.brand', 'dark.white');
-  const createButtonColor = useColorModeValue(
-    'light.black',
-    'var(--chakra-colors-dark-purple-500)'
-  );
-  const createButtonBorder = useColorModeValue(
-    '1px solid black',
-    '1px solid var(--chakra-colors-dark-purple-500)'
-  );
+  const createButtonBg = 'dark.white';
+  const createButtonColor = 'var(--chakra-colors-dark-purple-500)';
+  const createButtonBorder = '1px solid var(--chakra-colors-dark-purple-500)';
 
-  const fontColor = useColorModeValue('light.black', 'dark.purple.500');
+  const fontColor = 'dark.purple.500';
 
   const tokenAddressDisplay = formatAddress(tokenData?.address);
   const toast = useToast();

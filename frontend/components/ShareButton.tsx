@@ -9,13 +9,12 @@ import {
   MenuItem,
 } from '@chakra-ui/react';
 import { FaShare } from 'react-icons/fa';
+import { useConnectedAccount } from '@/contexts/ConnectedAccountProvider';
 
-const ClientShareButton = ({ pageAccount }: { pageAccount: string | null }) => {
-  if (!pageAccount) {
-    return null;
-  }
+const ShareButton = ({  pageAccount }: {pageAccount: string | null; }) => {
+  const { appNetworkConfig } = useConnectedAccount();
 
-  const currentUrl = `${window.location.host}/grave/${pageAccount}`;
+  const currentUrl = `${appNetworkConfig.baseUrl}/${appNetworkConfig.chainSlug}/grave/${pageAccount}`;
   const { hasCopied, onCopy } = useClipboard(currentUrl);
   const toast = useToast();
 
@@ -29,13 +28,17 @@ const ClientShareButton = ({ pageAccount }: { pageAccount: string | null }) => {
     });
   };
 
+  if (!pageAccount) {
+    return null;
+  }
+
   return (
     <Menu>
       <MenuButton as={Button} size={'sm'} rightIcon={<FaShare />}>
         Share
       </MenuButton>
-      <MenuList>
-        <MenuItem onClick={handleCopyLink}>
+      <MenuList color={'dark.purple.300'} >
+        <MenuItem onClick={handleCopyLink} fontWeight={'700'}>
           {hasCopied ? 'Copied' : 'Copy Link'}
         </MenuItem>
       </MenuList>
@@ -43,4 +46,4 @@ const ClientShareButton = ({ pageAccount }: { pageAccount: string | null }) => {
   );
 };
 
-export default ClientShareButton;
+export default ShareButton;
